@@ -1,0 +1,6 @@
+export const GEOFENCE_CENTER = {
+  lat: -5.158013734792908,
+  lng: 119.47830951069488,
+};
+
+export const GEOFENCE_RADIUS_METERS = 20;

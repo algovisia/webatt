@@ -1,51 +1,52 @@
-# WebAtt App
+# WebAtt Absen SPA
 
-A simple web-based attendance tracking application built as a Progressive Web App (PWA) using Nuxt.
+Mobile-first attendance screen built with Vue 2 + Vue Material. The UI mirrors the Material 3-inspired mock and can be dropped into a Nuxt-based PWA later.
+
+## Getting Started
+
+```bash
+npm install
+npm run dev
+```
+
+Open http://localhost:5173 to preview the SPA.
+
+### Build
+
+```bash
+npm run build
+npm run preview
+```
+
+### Hosting under a subfolder
+
+Set the base path before building so all asset URLs use the same subfolder:
+
+```bash
+VITE_BASE_PATH=/absensi/ npm run build
+```
+
+The value must include a trailing slash (e.g., `/app/`). Leave it empty to default to `/`.
+
+With Docker Compose you can provide the same value via an `.env` file or inline:
+
+```bash
+APP_BASE_PATH=/absensi/ docker compose up --build
+```
 
 ## Features
 
-- Track employee attendance
-- View attendance records
-- User-friendly interface
+- Sticky app bar with live WITA clock and drawer toggle
+- Primary CTA card that confirms, grabs geolocation, and queues offline entries
+- Snackbar feedback plus offline banner and auto-sync when connection returns
+- Attendance list with per-item overflow menu
+- Navigation drawer and stub pages for Riwayat & Pengaturan
 
-## Installation
+## Structure Highlights
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/algofran/webatt.git
-   ```
+- `src/App.vue` – Shell (app bar, drawer, snackbar, offline banner)
+- `src/pages/HomeAbsen.vue` – Absen screen logic and CTA flow
+- `src/components` – UI building blocks (app bar, drawer, CTA card, list, dialog)
+- `src/store/attendance.js` – In-memory store with offline queue + sync mock
 
-2. Navigate to the project directory:
-   ```
-   cd webatt
-   ```
-
-3. Install dependencies:
-   ```
-   pnpm install
-   ```
-
-4. Start the application:
-   ```
-   pnpm start
-   ```
-
-## PWA Features
-
-This app is built as a Progressive Web App (PWA) using Nuxt, allowing it to be installed on mobile devices and work offline.
-
-- Installable on mobile devices
-- Offline functionality
-- Fast loading and responsive design
-
-## Usage
-
-Open your browser and go to `http://localhost:3000` to access the app.
-
-## Contributing
-
-Feel free to submit issues and pull requests.
-
-## License
-
-This project is licensed under the MIT License.
+Material Icons are loaded via Google Fonts; styling sticks to Vue Material tokens with light utility CSS. All copy is Indonesian by default. 

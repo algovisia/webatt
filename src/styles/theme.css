@@ -1,0 +1,60 @@
+:root {
+  --primary-color: #DC2626;
+  --surface-color: #130332;
+  --text-primary: #ffffff;
+  --text-secondary: #5c5c5c;
+}
+
+body {
+  margin: 0;
+  font-family: 'Roboto', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+    sans-serif;
+  background-color: var(--surface-color);
+  color: var(--text-primary);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.md-theme-default {
+  --md-theme-primary: var(--primary-color);
+  --md-theme-accent: #3B82F6;
+  color: #ffffff;
+  background-color: var(--surface-color);
+}
+
+.md-app {
+  background: transparent;
+}
+
+.md-app-container {
+  overflow-x: hidden;
+}
+
+.md-field.md-has-password .md-toggle-password {
+  display: none;
+}
+
+.sr-only {
+  border: 0;
+  clip: rect(0, 0, 0, 0);
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  padding: 0;
+  position: absolute;
+  width: 1px;
+}
+
+.page-enter-active,
+.page-leave-active {
+  transition: opacity 0.25s ease, transform 0.25s ease;
+}
+
+.page-enter,
+.page-leave-to {
+  opacity: 0;
+  transform: translateY(12px);
+}

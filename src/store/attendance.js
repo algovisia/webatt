@@ -25,7 +25,7 @@ const geofenceStore = useGeofenceStore();
 const SUBMISSION_ENDPOINTS = {
   checkin: '/v1/attendance/check-in',
   checkout: '/v1/attendance/check-out',
-  lembur: '/v1/attendance/check-in',
+  lembur: '/v1/attendance/overtime',
   dinas_luar: '/v1/attendance/check-in'
 };
 
@@ -322,7 +322,7 @@ async function fetchSummaryRemote({ force = false } = {}) {
   }
 }
 
-async function fetchHistory({ force = false } = {}) {
+async function fetchHistory({ force = false } = {}, retried = false) {
   const auth = useAuthStore();
   if (!auth.token) {
     state.records = [];
@@ -339,9 +339,7 @@ async function fetchHistory({ force = false } = {}) {
   state.error = null;
   try {
     await geofenceStore.ensureLocations();
-    const payload = await apiRequest('/v1/attendance/history', {
-      token: auth.token
-    });
+    const payload = await fetchHistoryRemote(auth);
 
     console.log(payload)
     const attendances = Array.isArray(payload?.data?.attendances)
@@ -362,11 +360,81 @@ async function fetchHistory({ force = false } = {}) {
     await fetchSummaryRemote({ force: true });
     return mapped;
   } catch (error) {
+    console.log("error fetchHistory history", error)
+    const message = (error?.message || '').toLowerCase();
+    const invalidMessage = 'invalid or expired token';
+    const shouldRetry =
+      !retried &&
+      ((message && message.includes(invalidMessage)) || (error instanceof ApiError && error.status === 401));
+    if (shouldRetry) {
+      const refreshed = await tryRefreshAuth(auth);
+      if (refreshed) {
+        return fetchHistory({ force: true }, true);
+      }
+    }
     state.error = error instanceof ApiError ? error.message : 'Gagal memuat riwayat absen';
     throw error;
   } finally {
     state.loading = false;
   }
+}
+
+async function fetchHistoryRemote(auth, retried = false) {
+  await ensureValidAuthSession(auth);
+  try {
+    return await apiRequest('/v1/attendance/history', {
+      token: auth.token
+    });
+  } catch (error) {
+    console.log("error fetchHistory history", error)
+    if (!retried && shouldRetryWithAuth(error)) {
+      const refreshed = await tryRefreshAuth(auth);
+      if (refreshed) {
+        return fetchHistoryRemote(auth, true);
+      }
+    }
+    throw error;
+  }
+}
+
+async function ensureValidAuthSession(auth) {
+  if (!auth || !auth.token) {
+    throw new ApiError('Anda belum login', { status: 401 });
+  }
+  if (!isTokenExpired(auth)) {
+    return;
+  }
+  const refreshed = await tryRefreshAuth(auth);
+  if (refreshed) {
+    return;
+  }
+  throw new ApiError('Sesi login telah berakhir. Silakan login kembali.', { status: 401 });
+}
+
+function isTokenExpired(auth) {
+  if (!auth) {
+    return false;
+  }
+  const expiresAt = typeof auth.expiresAt === 'number' ? auth.expiresAt : null;
+  if (!Number.isFinite(expiresAt)) {
+    return false;
+  }
+  return expiresAt <= Date.now();
+}
+
+function shouldRetryWithAuth(error) {
+  if (!(error instanceof ApiError)) {
+    return false;
+  }
+  return error.status === 401 || error.status === 419;
+}
+
+async function tryRefreshAuth(auth) {
+  if (!auth || typeof auth.relogin !== 'function' || !auth.credentials) {
+    return false;
+  }
+  await auth.relogin();
+  return true;
 }
 
 async function submitAttendance(type, { coords, note, locationName, photoFile } = {}) {
@@ -385,96 +453,69 @@ async function submitAttendance(type, { coords, note, locationName, photoFile } 
   await geofenceStore.ensureLocations();
   const todayInfo = await fetchTodayRemote();
   const normalizedType = type === 'dinas_luar' ? 'checkin' : type;
-  const isDinasLuar = type === 'dinas_luar';
-  const isLembur = type === 'lembur';
-  const hasCheckInRecord =
-    hasTodayRecord('checkin') ||
-    Boolean(
-      todayInfo?.check_in_time ||
-        todayInfo?.checkInTime ||
-        todayInfo?.has_check_in ||
-        todayInfo?.has_checkin
-    );
-  const hasCheckOutRecord =
-    hasTodayRecord('checkout') ||
-    Boolean(
-      todayInfo?.check_out_time ||
-        todayInfo?.checkOutTime ||
-        todayInfo?.has_check_out ||
-        todayInfo?.has_checkout
-    );
-  const hasLemburRecord =
-    hasTodayRecord('lembur') || Boolean(todayInfo?.is_lembur || todayInfo?.status === 'Lembur');
 
   if (normalizedType === 'checkin') {
-    if (todayInfo && todayInfo.has_attendance && !todayInfo.can_check_in) {
+    if (todayInfo && todayInfo.has_attendance && todayInfo.can_check_in === false) {
       throw new ApiError(DUPLICATE_MESSAGES.checkin, { status: 409 });
     }
     if (hasTodayRecord(type)) {
       throw new ApiError(DUPLICATE_MESSAGES.checkin, { status: 409 });
     }
   } else if (normalizedType === 'checkout') {
-    if (todayInfo && !todayInfo.can_check_out) {
+    if (todayInfo && todayInfo.can_check_out === false) {
       throw new ApiError(DUPLICATE_MESSAGES.checkout, { status: 409 });
     }
     if (hasTodayRecord(type)) {
       throw new ApiError(DUPLICATE_MESSAGES.checkout, { status: 409 });
     }
-  } else if (isLembur) {
-    if (!hasCheckInRecord || !hasCheckOutRecord) {
-      throw new ApiError('Selesaikan check-in dan check-out sebelum memilih lembur.', {
-        status: 400
-      });
-    }
-    if (hasLemburRecord) {
-      throw new ApiError(DUPLICATE_MESSAGES.lembur, { status: 409 });
-    }
   }
 
-  const shouldUseFormData = typeof FormData !== 'undefined' && !!photoFile;
-  const payload = shouldUseFormData ? new FormData() : {};
-
-  const assignPayload = (key, value) => {
+  const canUseFormData = typeof FormData !== 'undefined' && !!photoFile;
+  const submissionPayload = canUseFormData ? new FormData() : {};
+  const appendField = (key, value) => {
     if (value === undefined || value === null || value === '') {
       return;
     }
-    if (shouldUseFormData) {
-      payload.append(key, value);
+    if (canUseFormData) {
+      submissionPayload.append(key, value);
     } else {
-      payload[key] = value;
+      submissionPayload[key] = value;
     }
   };
 
   if (coords) {
-    assignPayload('latitude', coords.lat);
-    assignPayload('longitude', coords.lng);
+    appendField('latitude', coords.lat);
+    appendField('longitude', coords.lng);
   }
   if (note) {
-    assignPayload('notes', note);
+    appendField('notes', note);
+  } else if (type === 'dinas_luar' && locationName) {
+    appendField('notes', locationName);
   }
-  if (locationName && !note && type === 'dinas_luar') {
-    assignPayload('notes', locationName);
+
+  if (canUseFormData && photoFile) {
+    const filename =
+      typeof photoFile.name === 'string' && photoFile.name.length
+        ? photoFile.name
+        : `attendance-${Date.now()}.jpg`;
+    submissionPayload.append('foto', photoFile, filename);
   }
-  if (shouldUseFormData && photoFile) {
-    const fileName =
-      (typeof photoFile.name === 'string' && photoFile.name) || `attendance-${Date.now()}.jpg`;
-    payload.append('foto', photoFile, fileName);
-  }
-  if (isDinasLuar) {
-    assignPayload('attendance_type', 'dinas_luar');
-  } else if (isLembur) {
-    assignPayload('attendance_type', 'lembur');
-    assignPayload('overtime', shouldUseFormData ? '1' : true);
+
+  if (type === 'dinas_luar') {
+    appendField('attendance_type', 'dinas_luar');
+  } else if (type === 'lembur') {
+    appendField('attendance_type', 'lembur');
+    appendField('overtime', canUseFormData ? '1' : true);
   }
 
   state.syncing = true;
   try {
     const response = await apiRequest(endpoint, {
       method: 'POST',
-      data: payload,
+      data: submissionPayload,
       token: auth.token
     });
-
+    console.log("response : ", response);
     const mapped = mapSubmissionResponse(type, response);
     await fetchHistory({ force: true });
     await fetchTodayRemote({ force: true });
@@ -482,6 +523,7 @@ async function submitAttendance(type, { coords, note, locationName, photoFile } 
     notify(mapped?.message || response?.message || 'Absensi tercatat');
     return mapped?.record ?? null;
   } catch (error) {
+    console.log('error : ', error);
     const message = error instanceof ApiError ? error.message : 'Gagal memproses absensi';
     notify(message);
     throw error instanceof ApiError ? error : new ApiError(message, { status: 0 });

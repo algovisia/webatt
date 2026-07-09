@@ -1,0 +1,9 @@
+services:
+  web:
+    build:
+      context: .
+      args:
+        APP_BASE_PATH: "/absen/"
+    ports:
+      - "8080:80"
+    restart:   unless-stopped
