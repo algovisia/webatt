@@ -131,7 +131,8 @@ export default {
 <style>
 .app-drawer {
   width: 280px;
-  background: #fff;
+  min-height: 100vh;
+  background: var(--card-bg);
 }
 
 .drawer-header {
@@ -193,12 +194,12 @@ export default {
 }
 
 .md-list-item-container:not(.md-list-item-default):not([disabled])>.md-list-item-content {
-  color: white;
+  color: var(--text-primary);
 }
 
 .drawer-footer {
   padding: 12px 16px 20px;
-  border-top: 1px solid rgba(15, 15, 36, 0.08);
+  border-top: 1px solid var(--border-color);
   min-height: 60px;
 }
 

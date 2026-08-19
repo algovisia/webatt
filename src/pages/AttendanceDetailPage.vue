@@ -57,6 +57,53 @@
           Tidak ada foto yang dilampirkan.
         </div>
       </div>
+
+      <div class="override-section">
+        <div v-if="overrideStatus === 'pending'" class="override-badge override-badge--pending">
+          <span class="material-symbols-outlined">schedule</span>
+          <span>Permintaan override sedang diproses</span>
+        </div>
+        <div v-else-if="overrideStatus === 'approved'" class="override-badge override-badge--approved">
+          <span class="material-symbols-outlined">check_circle</span>
+          <span>Override telah disetujui</span>
+        </div>
+        <template v-else>
+          <button
+            v-if="!showOverrideForm"
+            class="override-btn"
+            @click="showOverrideForm = true"
+          >
+            <span class="material-symbols-outlined">edit_note</span>
+            Request Override
+          </button>
+          <div v-else class="override-form">
+            <p class="override-form-title">Alasan Override</p>
+            <textarea
+              v-model="overrideReason"
+              class="override-textarea"
+              placeholder="Jelaskan alasan perubahan jam presensi (min. 10 karakter)..."
+              rows="3"
+              maxlength="500"
+            ></textarea>
+            <p class="char-count">{{ overrideReason.length }}/500</p>
+            <div class="override-actions">
+              <button
+                class="override-cancel"
+                :disabled="submittingOverride"
+                @click="cancelOverride"
+              >Batal</button>
+              <button
+                class="override-submit"
+                :disabled="overrideReason.length < 10 || submittingOverride"
+                @click="submitOverride"
+              >
+                <span v-if="submittingOverride">Mengirim...</span>
+                <span v-else>Kirim</span>
+              </button>
+            </div>
+          </div>
+        </template>
+      </div>
     </section>
   </div>
 </template>
@@ -64,8 +111,11 @@
 <script>
 import { API_BASE_URL } from '../config/api';
 import { useAttendanceStore } from '../store/attendance';
+import { apiRequest, ApiError } from '../utils/apiClient';
+import { useAuthStore } from '../store/auth';
 
 const attendanceStore = useAttendanceStore();
+const authStore = useAuthStore();
 const API_ORIGIN = new URL(API_BASE_URL).origin;
 const dateFormatter = new Intl.DateTimeFormat('id-ID', {
   weekday: 'long',
@@ -84,7 +134,10 @@ export default {
   data() {
     return {
       loading: true,
-      error: null
+      error: null,
+      showOverrideForm: false,
+      overrideReason: '',
+      submittingOverride: false
     };
   },
   computed: {
@@ -165,6 +218,22 @@ export default {
         ? `/${trimmed}`
         : `/storage/${trimmed}`;
       return `${API_ORIGIN}${relativePath}`;
+    },
+    absensiId() {
+      if (!this.record) {
+        return null;
+      }
+      return this.record.meta?.id_absensi || this.record.meta?.id || null;
+    },
+    overrideStatus() {
+      if (!this.record?.meta) {
+        return null;
+      }
+      const meta = this.record.meta;
+      if (meta.override_request) {
+        return meta.override_status || 'pending';
+      }
+      return null;
     }
   },
   watch: {
@@ -198,6 +267,41 @@ export default {
       } else {
         this.$router.push({ name: 'Riwayat' });
       }
+    },
+    cancelOverride() {
+      this.showOverrideForm = false;
+      this.overrideReason = '';
+    },
+    async submitOverride() {
+      if (this.submittingOverride || this.overrideReason.length < 10) {
+        return;
+      }
+      if (!this.absensiId) {
+        attendanceStore.pushMessage('ID absensi tidak ditemukan.');
+        return;
+      }
+      this.submittingOverride = true;
+      try {
+        await apiRequest('/v1/attendance/request-override', {
+          method: 'POST',
+          token: authStore.token,
+          data: {
+            id_absensi: this.absensiId,
+            reason: this.overrideReason
+          }
+        });
+        attendanceStore.pushMessage('Permintaan override berhasil dikirim.');
+        this.showOverrideForm = false;
+        this.overrideReason = '';
+        await attendanceStore.refresh({ force: true });
+      } catch (err) {
+        const message = err instanceof ApiError
+          ? err.message
+          : 'Gagal mengirim permintaan override.';
+        attendanceStore.pushMessage(message);
+      } finally {
+        this.submittingOverride = false;
+      }
     }
   }
 };
@@ -214,7 +318,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 16px;
-  background: #fff;
+  background: var(--card-bg);
   padding: 16px;
   border-radius: 16px;
   box-shadow: 0 8px 24px rgba(31, 26, 51, 0.08);
@@ -224,7 +328,7 @@ export default {
   margin: 0;
   font-size: 22px;
   font-weight: 700;
-  color: var(--surface-color);
+  color: var(--text-primary);
 }
 
 .detail-type {
@@ -245,14 +349,14 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 20px;
-  background: #fff;
+  background: var(--card-bg);
   padding: 20px;
   border-radius: 20px;
   box-shadow: 0 16px 40px rgba(31, 26, 51, 0.08);
 }
 
 .detail-state {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 16px;
   padding: 24px;
   text-align: center;
@@ -290,7 +394,7 @@ export default {
 
 .info-sub {
   font-size: 13px;
-  color: var(--surface-color);
+  color: var(--text-secondary);
   margin: 2px 0 0;
 }
 
@@ -323,6 +427,122 @@ export default {
   text-align: center;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+.override-section {
+  margin-top: 8px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 16px;
+}
+
+.override-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px dashed var(--primary-color);
+  background: transparent;
+  color: var(--primary-color);
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.override-btn:hover {
+  background: rgba(220, 38, 38, 0.05);
+}
+
+.override-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.override-form-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.override-textarea {
+  width: 100%;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
+  background: var(--surface-color);
+  color: var(--text-primary);
+  font-family: inherit;
+  resize: vertical;
+  transition: border-color 0.2s ease;
+}
+
+.override-textarea:focus {
+  outline: none;
+  border-color: var(--primary-color);
+}
+
+.char-count {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
+.override-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.override-cancel,
+.override-submit {
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  border: none;
+}
+
+.override-cancel {
+  background: var(--surface-color);
+  color: var(--text-primary);
+  border: 1px solid var(--border-color);
+}
+
+.override-submit {
+  background: var(--primary-color);
+  color: #fff;
+}
+
+.override-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.override-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  font-weight: 500;
+  font-size: 14px;
+}
+
+.override-badge--pending {
+  background: rgba(245, 158, 11, 0.1);
+  color: #f59e0b;
+}
+
+.override-badge--approved {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
 }
 
 @media (max-width: 600px) {

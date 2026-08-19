@@ -9,13 +9,11 @@
       <div class="card-row">
         <div>
           <div class="row-title">Tema</div>
-          <div class="row-subtitle">Mode gelap akan segera hadir.</div>
+          <div class="row-subtitle">Pilih mode gelap atau terang.</div>
         </div>
-        <md-switch
-          aria-label="Ganti tema"
-          :value="false"
-          @change="notifyComingSoon"
-        />
+        <button class="theme-toggle" aria-label="Ganti tema" @click="toggleTheme">
+          <span class="material-symbols-outlined">{{ isDark ? 'dark_mode' : 'light_mode' }}</span>
+        </button>
       </div>
     </section>
 
@@ -35,14 +33,21 @@
 
 <script>
 import { useAttendanceStore } from '../store/attendance';
+import { useThemeStore, themeState } from '../store/theme';
 
 const store = useAttendanceStore();
+const themeStore = useThemeStore();
 
 export default {
   name: 'PengaturanPage',
+  computed: {
+    isDark() {
+      return themeState.isDark;
+    }
+  },
   methods: {
-    notifyComingSoon() {
-      alert('Mode gelap akan tersedia segera.');
+    toggleTheme() {
+      themeStore.toggleTheme();
     },
     clearData() {
       if (confirm('Hapus seluruh data lokal?')) {
@@ -72,7 +77,8 @@ export default {
 }
 
 .card {
-  background: #fff;
+  background: var(--card-bg);
+  color: var(--text-primary);
   border-radius: 16px;
   padding: 20px 16px;
   box-shadow: 0 8px 24px rgba(31, 26, 51, 0.05);
@@ -93,5 +99,30 @@ export default {
 .row-subtitle {
   font-size: 14px;
   color: var(--text-secondary);
+}
+
+.theme-toggle {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: var(--cell-bg);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.2s ease, transform 0.15s ease;
+}
+
+.theme-toggle:hover {
+  transform: scale(1.1);
+}
+
+.theme-toggle:active {
+  transform: scale(0.95);
+}
+
+.theme-toggle .material-symbols-outlined {
+  font-size: 22px;
 }
 </style>

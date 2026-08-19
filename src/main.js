@@ -6,6 +6,7 @@ import router from './router';
 
 import 'vue-material/dist/vue-material.min.css';
 import './styles/theme.css';
+import './store/theme';
 
 Vue.use(VueMaterial);
 

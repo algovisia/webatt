@@ -35,7 +35,7 @@ export default {
   color: #fff;
   border-radius: 20px;
   padding: 24px;
-  box-shadow: 0 12px 32px #2700ff;
+  box-shadow: 0 12px 32px var(--cta-shadow);
   margin-bottom: 24px;
 }
 

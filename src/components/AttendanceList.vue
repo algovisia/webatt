@@ -35,16 +35,28 @@
               </template>
               <span v-else>—</span>
             </div>
-            <md-button
-              v-if="group.checkin"
-              class="cell-action md-icon-button"
-              aria-label="Detail check-in"
-              @click="$emit('view-details', group.checkin)"
-            >
-              <span class="material-symbols-outlined" aria-hidden="true">
-                info
-              </span>
-            </md-button>
+            <div class="cell-actions">
+              <md-button
+                v-if="canOverride(group.checkin || group.checkout)"
+                class="md-icon-button"
+                aria-label="Request Override"
+                @click="openOverride(group.checkin || group.checkout)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">
+                  edit_note
+                </span>
+              </md-button>
+              <md-button
+                v-if="group.checkin"
+                class="md-icon-button"
+                aria-label="Detail check-in"
+                @click="$emit('view-details', group.checkin)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">
+                  info
+                </span>
+              </md-button>
+            </div>
           </div>
           <div
             class="history-cell"
@@ -61,16 +73,28 @@
               </template>
               <span v-else>—</span>
             </div>
-            <md-button
-              v-if="group.checkout"
-              class="cell-action md-icon-button"
-              aria-label="Detail check-out"
-              @click="$emit('view-details', group.checkout)"
-            >
-              <span class="material-symbols-outlined" aria-hidden="true">
-                info
-              </span>
-            </md-button>
+            <div class="cell-actions">
+              <md-button
+                v-if="canOverride(group.checkout || group.checkin)"
+                class="md-icon-button"
+                aria-label="Request Override"
+                @click="openOverride(group.checkout || group.checkin)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">
+                  edit_note
+                </span>
+              </md-button>
+              <md-button
+                v-if="group.checkout"
+                class="md-icon-button"
+                aria-label="Detail check-out"
+                @click="$emit('view-details', group.checkout)"
+              >
+                <span class="material-symbols-outlined" aria-hidden="true">
+                  info
+                </span>
+              </md-button>
+            </div>
           </div>
         </div>
       </div>
@@ -78,10 +102,37 @@
         Belum ada riwayat absensi.
       </p>
     </md-list>
+
+    <md-dialog :md-active.sync="showDialog">
+      <md-dialog-title>Request Override</md-dialog-title>
+      <div style="padding: 0 24px">
+        <p style="margin-top: 0; color: var(--text-secondary); font-size: 14px;">
+          Jelaskan alasan Anda ingin mengubah atau mengajukan perbaikan pada absen ini.
+        </p>
+        <md-field>
+          <label>Alasan Override</label>
+          <md-textarea v-model="overrideReason" required maxlength="500"></md-textarea>
+          <span class="md-helper-text">Min 10 karakter</span>
+        </md-field>
+      </div>
+      <md-dialog-actions>
+        <md-button class="md-primary" @click="closeOverride" :disabled="submitting">Batal</md-button>
+        <md-button class="md-primary" @click="submitOverride" :disabled="overrideReason.length < 10 || submitting">
+          {{ submitting ? 'Mengirim...' : 'Kirim' }}
+        </md-button>
+      </md-dialog-actions>
+    </md-dialog>
   </section>
 </template>
 
 <script>
+import { apiRequest, ApiError } from '../utils/apiClient';
+import { useAuthStore } from '../store/auth';
+import { useAttendanceStore } from '../store/attendance';
+
+const authStore = useAuthStore();
+const attendanceStore = useAttendanceStore();
+
 const dayFormatter = new Intl.DateTimeFormat('id-ID', {
   weekday: 'long'
 });
@@ -103,6 +154,14 @@ export default {
       type: Array,
       required: true
     }
+  },
+  data() {
+    return {
+      showDialog: false,
+      overrideReason: '',
+      activeRecord: null,
+      submitting: false
+    };
   },
   computed: {
     groupedRecords() {
@@ -161,6 +220,59 @@ export default {
         return value;
       }
       return value.charAt(0).toUpperCase() + value.slice(1);
+    },
+    canOverride(record) {
+      if (!record || !record.meta) return false;
+      const meta = record.meta;
+      // Jangan tampilkan jika sudah disetujui atau sedang diproses
+      if (meta.override_request && meta.override_status) {
+        return false;
+      }
+      return true;
+    },
+    openOverride(record) {
+      this.activeRecord = record;
+      this.overrideReason = '';
+      this.showDialog = true;
+    },
+    closeOverride() {
+      this.showDialog = false;
+      this.activeRecord = null;
+      this.overrideReason = '';
+    },
+    async submitOverride() {
+      if (this.submitting || this.overrideReason.length < 10 || !this.activeRecord) {
+        return;
+      }
+
+      const absensiId = this.activeRecord.meta?.id_absensi || this.activeRecord.meta?.id;
+      if (!absensiId) {
+        attendanceStore.pushMessage('ID absensi tidak valid.');
+        return;
+      }
+
+      this.submitting = true;
+      try {
+        await apiRequest('/v1/attendance/request-override', {
+          method: 'POST',
+          token: authStore.token,
+          data: {
+            id_absensi: absensiId,
+            reason: this.overrideReason
+          }
+        });
+        
+        attendanceStore.pushMessage('Permintaan override berhasil dikirim.');
+        this.closeOverride();
+        await attendanceStore.refresh({ force: true });
+      } catch (err) {
+        const message = err instanceof ApiError
+          ? err.message
+          : 'Gagal mengirim permintaan override.';
+        attendanceStore.pushMessage(message);
+      } finally {
+        this.submitting = false;
+      }
     }
   }
 };
@@ -177,7 +289,7 @@ function selectPreferableRecord(existing, candidate) {
 
 <style scoped>
 .attendance-list {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 20px;
   padding: 8px 0;
   box-shadow: 0 12px 32px rgba(31, 26, 51, 0.04);
@@ -187,7 +299,7 @@ function selectPreferableRecord(existing, candidate) {
   display: flex;
   gap: 16px;
   padding: 16px 20px;
-  border-bottom: 1px solid rgba(15, 15, 36, 0.06);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .history-row:last-child {
@@ -239,8 +351,8 @@ function selectPreferableRecord(existing, candidate) {
   position: relative;
   padding: 14px;
   border-radius: 16px;
-  background: rgb(222 225 234 / 80%);
-  border: 1px solid rgba(124, 77, 255, 0.12);
+  background: var(--cell-bg);
+  border: 1px solid var(--border-color);
 }
 
 .history-cell--empty {
@@ -258,7 +370,7 @@ function selectPreferableRecord(existing, candidate) {
 .cell-value {
   font-size: 18px;
   font-weight: 600;
-  color: var(--surface-color);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 6px;
@@ -279,10 +391,21 @@ function selectPreferableRecord(existing, candidate) {
   color: #f57c00;
 }
 
-.cell-action {
+
+
+.cell-actions {
   position: absolute;
   top: 6px;
   right: 6px;
+  display: flex;
+  gap: 0;
+}
+
+.cell-actions .md-icon-button {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  margin: 0;
 }
 
 .empty-state {

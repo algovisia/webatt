@@ -109,7 +109,7 @@ export default {
 }
 
 .search-field {
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 16px;
   padding: 8px 16px 4px;
   box-shadow: 0 8px 24px rgba(31, 26, 51, 0.05);

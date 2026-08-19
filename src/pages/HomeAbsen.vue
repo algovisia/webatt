@@ -136,6 +136,36 @@ export default {
       return `${hours}:${minutes}`;
     }
   },
+  watch: {
+    records: {
+      immediate: true,
+      handler(newRecords) {
+        if (!newRecords || !newRecords.length) return;
+        
+        const now = new Date();
+        const todayKey = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+        
+        let hasCheckinToday = false;
+        let hasCheckoutToday = false;
+
+        for (const record of newRecords) {
+          if (!record.timestamp) continue;
+          const d = new Date(record.timestamp);
+          const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
+          if (key === todayKey) {
+            if (record.type === 'checkin' || record.type === 'dinas_luar') hasCheckinToday = true;
+            if (record.type === 'checkout') hasCheckoutToday = true;
+          }
+        }
+
+        if (hasCheckinToday && !hasCheckoutToday) {
+          this.selectedType = 'checkout';
+        } else if (!hasCheckinToday) {
+          this.selectedType = 'checkin';
+        }
+      }
+    }
+  },
   created() {
     this.ensureGeofenceData();
     store.refresh().catch(() => {});
@@ -513,8 +543,8 @@ export default {
   border-radius: 16px;
   padding: 10px 16px;
   font-weight: 600;
-  background: #fff;
-  color: var(--surface-color);
+  background: var(--card-bg);
+  color: var(--text-primary);
   box-shadow: 0 8px 24px rgba(31, 26, 51, 0.08);
 }
 

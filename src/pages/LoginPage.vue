@@ -157,7 +157,7 @@ export default {
 
 .login-card {
   width: min(420px, 100%);
-  background: #fff;
+  background: var(--card-bg);
   border-radius: 24px;
   padding: 32px 28px;
   box-shadow: 0 24px 60px rgba(31, 26, 51, 0.12);

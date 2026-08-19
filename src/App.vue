@@ -42,6 +42,14 @@
     >
       {{ snackbar?.message }}
     </md-snackbar>
+
+    <checkout-reminder
+      v-if="showShell"
+      :active.sync="showCheckoutReminder"
+      :message="reminderMessage"
+      @dismiss-today="dismissReminder"
+      @go-checkout="goToCheckout"
+    />
     <transition name="offline-banner">
       <div v-if="isOffline" class="offline-banner" role="status">
         Anda offline
@@ -53,14 +61,17 @@
 <script>
 import AppBar from './components/AppBar.vue';
 import AppDrawer from './components/AppDrawer.vue';
+import CheckoutReminder from './components/CheckoutReminder.vue';
 import { useAttendanceStore } from './store/attendance';
 import { useAuthStore } from './store/auth';
+import { useGeofenceStore } from './store/geofence';
+import { distanceInMeters } from './utils/geo';
 
 const authStore = useAuthStore();
 
 export default {
   name: 'App',
-  components: { AppBar, AppDrawer },
+  components: { AppBar, AppDrawer, CheckoutReminder },
   data() {
     return {
       drawerVisible: false,
@@ -68,7 +79,10 @@ export default {
       snackbar: null,
       snackbarTimer: null,
       isOffline: !navigator.onLine,
-      unsubscribeAuth: null
+      unsubscribeAuth: null,
+      showCheckoutReminder: false,
+      reminderMessage: '',
+      lastReminderTime: 0
     };
   },
   computed: {
@@ -102,6 +116,7 @@ export default {
     clearInterval(this.intervalId);
     window.removeEventListener('online', this.handleOnline);
     window.removeEventListener('offline', this.handleOffline);
+    document.removeEventListener('visibilitychange', this.handleVisibility);
     this.clearSnackbarTimer();
     if (this.unsubscribe) {
       this.unsubscribe();
@@ -115,12 +130,21 @@ export default {
     startClock() {
       this.intervalId = setInterval(() => {
         this.currentTime = new Date();
+        authStore.checkExpiration();
+        this.checkCheckoutReminder();
       }, 60000);
       this.currentTime = new Date();
+      setTimeout(() => this.checkCheckoutReminder(), 5000);
     },
     observeNetwork() {
       window.addEventListener('online', this.handleOnline);
       window.addEventListener('offline', this.handleOffline);
+      document.addEventListener('visibilitychange', this.handleVisibility);
+    },
+    handleVisibility() {
+      if (document.visibilityState === 'visible') {
+        authStore.checkExpiration();
+      }
     },
     handleOnline() {
       this.isOffline = false;
@@ -194,6 +218,80 @@ export default {
         clearTimeout(this.snackbarTimer);
         this.snackbarTimer = null;
       }
+    },
+    async checkCheckoutReminder() {
+      const attendanceStore = useAttendanceStore();
+      if (!this.isAuthenticated || attendanceStore.isReminderDismissedToday()) {
+        return;
+      }
+      
+      const now = new Date();
+      if (now.getTime() - this.lastReminderTime < 300000) {
+        return;
+      }
+
+      const today = attendanceStore.today;
+      if (!today || !today.has_attendance || today.can_check_in || !today.can_check_out) {
+        return;
+      }
+
+      let shouldRemind = false;
+      let message = '';
+
+      if (now.getHours() >= 17) {
+        shouldRemind = true;
+        message = 'Waktu check-out sudah tiba (lewat 17:00). Jangan lupa untuk melakukan absen check-out sebelum meninggalkan lokasi.';
+      }
+
+      if (!shouldRemind && 'geolocation' in navigator) {
+        try {
+          const coords = await this.fetchCurrentLocation();
+          if (coords) {
+            const geofenceStore = useGeofenceStore();
+            await geofenceStore.ensureLocations();
+            const locations = geofenceStore.locations;
+            
+            let nearest = null;
+            locations.forEach(loc => {
+              if (!loc || !loc.center) return;
+              const dist = distanceInMeters(coords, loc.center);
+              if (Number.isFinite(dist) && (!nearest || dist < nearest.distance)) {
+                nearest = { location: loc, distance: dist };
+              }
+            });
+
+            if (nearest && nearest.distance > nearest.location.radius * 0.7) {
+              shouldRemind = true;
+              message = 'Anda terdeteksi mulai meninggalkan lokasi absen. Jangan lupa untuk melakukan absen check-out.';
+            }
+          }
+        } catch (error) {
+        }
+      }
+
+      if (shouldRemind) {
+        this.reminderMessage = message;
+        this.showCheckoutReminder = true;
+        this.lastReminderTime = now.getTime();
+      }
+    },
+    fetchCurrentLocation() {
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+          () => resolve(null),
+          { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+        );
+      });
+    },
+    dismissReminder() {
+      const attendanceStore = useAttendanceStore();
+      attendanceStore.dismissReminderToday();
+    },
+    goToCheckout() {
+      if (this.$route.path !== '/') {
+        this.$router.push('/');
+      }
     }
   }
 };
@@ -208,9 +306,9 @@ export default {
 .app-toolbar {
   position: sticky;
   top: 0;
-  z-index: 10;
+  z-index: 999;
   background: var(--surface-color);
-  border-bottom: 1px solid rgba(31, 26, 51, 0.08);
+  border-bottom: 1px solid var(--border-color);
 }
 
 .app-content {

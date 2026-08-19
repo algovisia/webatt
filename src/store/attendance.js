@@ -575,6 +575,16 @@ export function useAttendanceStore() {
     },
     async submit(type, payload) {
       return submitAttendance(type, payload);
+    },
+    isReminderDismissedToday() {
+      if (typeof window === 'undefined') return false;
+      const today = todayKey();
+      return window.localStorage.getItem(`webatt.reminder_dismissed_${today}`) === 'true';
+    },
+    dismissReminderToday() {
+      if (typeof window === 'undefined') return;
+      const today = todayKey();
+      window.localStorage.setItem(`webatt.reminder_dismissed_${today}`, 'true');
     }
   };
 }
