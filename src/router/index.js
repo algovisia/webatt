@@ -8,6 +8,7 @@ const Home = () => import('../pages/HomeAbsen.vue');
 const Riwayat = () => import('../pages/RiwayatPage.vue');
 const AttendanceDetail = () => import('../pages/AttendanceDetailPage.vue');
 const Pengaturan = () => import('../pages/PengaturanPage.vue');
+const PengajuanIzin = () => import('../pages/PengajuanIzinPage.vue');
 const Login = () => import('../pages/LoginPage.vue');
 
 const router = new VueRouter({
@@ -36,6 +37,12 @@ const router = new VueRouter({
       name: 'RiwayatDetail',
       component: AttendanceDetail,
       meta: { requiresAuth: true, title: 'Detail Absensi' }
+    },
+    {
+      path: '/izin',
+      name: 'PengajuanIzin',
+      component: PengajuanIzin,
+      meta: { requiresAuth: true, title: 'Pengajuan Izin' }
     },
     {
       path: '/pengaturan',

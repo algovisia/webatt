@@ -30,6 +30,11 @@
       @cta-click="openDialog"
     />
 
+    <md-button class="md-raised izin-button" @click="goTo('/izin')">
+      <span class="material-symbols-outlined" aria-hidden="true">event_busy</span>
+      Pengajuan Izin
+    </md-button>
+
     <button class="section-header" @click="goTo('/riwayat')">
       <span>Riwayat Absen</span>
       <span class="material-symbols-outlined" aria-hidden="true">arrow_forward</span>
@@ -551,6 +556,14 @@ export default {
 .type-button .material-symbols-outlined {
   font-size: 20px;
   margin-left: 0px !important;
+}
+
+.izin-button {
+  margin: 0;
+  border-radius: 16px;
+  font-weight: 600;
+  background: var(--card-bg);
+  color: var(--text-primary);
 }
 
 .time-chip {
